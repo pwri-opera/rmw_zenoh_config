@@ -19,7 +19,7 @@ mkdir -p "$parent" || exit 1
 if "$parent_created" && (( EUID == 0 )) && [[ ${SUDO_UID:-} =~ ^[0-9]+$ && ${SUDO_GID:-} =~ ^[0-9]+$ ]]; then
   chown -- "$SUDO_UID:$SUDO_GID" "$parent" || exit 1
 fi
-out=$(mktemp -d "$parent/zenoh-$(hostname)-$(date -u +%Y%m%dT%H%M%SZ)-XXXXXX") || exit 1
+out=$(mktemp -d "$parent/zenoh-$(hostname)-$(TZ=Asia/Tokyo date +%Y%m%dT%H%M%SJST)-XXXXXX") || exit 1
 echo "Recording to: $out"
 echo 'Stop with Ctrl+C. No ROS messages or Goals are published.'
 
