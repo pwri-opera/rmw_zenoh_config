@@ -23,16 +23,16 @@ out=$(mktemp -d "$parent/zenoh-$(hostname)-$(TZ=Asia/Tokyo date +%Y%m%dT%H%M%SJS
 echo "Recording to: $out"
 echo 'Stop with Ctrl+C. No ROS messages or Goals are published.'
 
-# Rotate each stream at 8 MiB, retaining four files per stream (~192 MiB total).
+# Rotate each stream at 32 MiB, retaining 16 files per stream (~3 GiB total).
 # Bounds disk use; after rotation old records are removed. Stop after reproduction.
 rotate() {
-  local base=$1 line bytes=0 size max=8388608 i
+  local base=$1 line bytes=0 size max=33554432 i
   : > "$base"
   while IFS= read -r line || [[ -n "$line" ]]; do
     size=$((${#line}+1))
     if (( bytes + size > max )); then
-      rm -f "$base.3"
-      for i in 2 1; do [[ ! -f "$base.$i" ]] || mv "$base.$i" "$base.$((i+1))"; done
+      rm -f "$base.15"
+      for ((i=14; i>=1; i--)); do [[ ! -f "$base.$i" ]] || mv "$base.$i" "$base.$((i+1))"; done
       mv "$base" "$base.1"
       : > "$base"; bytes=0
     fi
