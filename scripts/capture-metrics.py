@@ -164,12 +164,12 @@ def performance():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', required=True)
-    parser.add_argument('--duration', type=int, required=True)
+    parser.add_argument('--duration', type=int, default=0, help='seconds; 0 means unlimited')
     parser.add_argument('--retain-seconds', type=int, default=300)
     parser.add_argument('--skip-ping', nargs='*', default=[])
     args = parser.parse_args()
-    if args.retain_seconds < 0 or args.duration < 1:
-        parser.error('duration must be positive; retention must be nonnegative')
+    if args.retain_seconds < 0 or args.duration < 0:
+        parser.error('duration and retention must be nonnegative (duration 0 = unlimited)')
     out = Path(args.output)
     logs = {k: RotatingLog(out / name) for k, name in [('tcp', 'tcp.log'), ('peers', 'peers.jsonl'), ('performance', 'performance.jsonl'), ('health', 'metrics-status.jsonl')]}
     def emit(kind, data):
@@ -184,10 +184,11 @@ def main():
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     pending, last_probe = {}, {}
     start = time.monotonic()
+    deadline = start + args.duration if args.duration else float('inf')
     next_perf = start
-    emit('health', {'event': 'start', 'retention_seconds': args.retain_seconds, 'probe_interval_seconds': 10, 'probe_workers': 4})
+    emit('health', {'event': 'start', 'duration_seconds': args.duration, 'retention_seconds': args.retain_seconds, 'probe_interval_seconds': 10, 'probe_workers': 4})
     try:
-        while not stopped and time.monotonic() - start < args.duration:
+        while not stopped and time.monotonic() < deadline:
             tick = time.monotonic()
             ss = command(['ss', '-tinpe', '( sport = :7447 or dport = :7447 )'])
             logs['tcp'].write(timestamp() + '\n' + ss['stdout'] + ss['stderr'])
@@ -215,7 +216,7 @@ def main():
             elapsed = time.monotonic() - tick
             if elapsed > 1:
                 emit('health', {'event': 'sample_overrun', 'seconds': elapsed})
-            time.sleep(max(0, min(1 - elapsed, start + args.duration - time.monotonic())))
+            time.sleep(max(0, min(1 - elapsed, deadline - time.monotonic())))
     finally:
         pool.shutdown(wait=True, cancel_futures=True)
         for ip, future in pending.items():

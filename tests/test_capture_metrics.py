@@ -2,6 +2,10 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
+import signal
+import subprocess
+import json
 
 spec = importlib.util.spec_from_file_location('capture_metrics', Path(__file__).resolve().parents[1] / 'scripts/capture-metrics.py')
 m = importlib.util.module_from_spec(spec)
@@ -13,6 +17,43 @@ def sample(cookie='abc', sent=100, received=200, ip='192.168.20.73'):
 
 
 class CaptureMetricsTest(unittest.TestCase):
+    def test_exported_shell_rotation_retains_latest_generations(self):
+        source = (Path(__file__).resolve().parents[1] / 'scripts/zenoh-capture.sh').read_text()
+        rotate = source[source.index('rotate() {'):source.index('export -f rotate')]
+        rotate = rotate.replace('max=33554432', 'max=4')
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'stream.log'
+            subprocess.run(['bash', '-c', rotate + "\nexport -f rotate\nbash -c 'seq 10 29 | rotate \"$1\"' _ \"$1\"", '_', str(path)], check=True)
+            self.assertEqual(path.read_text(), '29\n')
+            self.assertEqual(Path(str(path) + '.15').read_text(), '14\n')
+            self.assertEqual(len(list(Path(directory).iterdir())), 16)
+
+    def test_default_runs_beyond_hour_until_signal(self):
+        self.check_duration([], 4002)
+
+    def test_explicit_duration_stops(self):
+        self.check_duration(['--duration', '2'], 2)
+
+    def check_duration(self, extra, expected):
+        clock = [0]
+        handlers = {}
+        def sleep(seconds):
+            clock[0] += seconds
+            if not extra and clock[0] >= 4002:
+                handlers[signal.SIGTERM]()
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch('sys.argv', ['capture-metrics', '--output', directory] + extra), \
+                 mock.patch.object(m.time, 'monotonic', side_effect=lambda: clock[0]), \
+                 mock.patch.object(m.time, 'sleep', side_effect=sleep), \
+                 mock.patch.object(m.signal, 'signal', side_effect=lambda sig, fn: handlers.update({sig: fn})), \
+                 mock.patch.object(m, 'command', return_value={'returncode': 0, 'stdout': '', 'stderr': ''}), \
+                 mock.patch.object(m, 'performance', return_value={}):
+                m.main()
+            self.assertEqual(clock[0], expected)
+            records = [json.loads(line) for line in (Path(directory) / 'metrics-status.jsonl').read_text().splitlines()]
+            self.assertEqual(records[-1]['event'], 'stop')
+            self.assertEqual(records[-1]['interrupted'], not bool(extra))
+
     def test_counter_rates_and_reconnection(self):
         t = m.Tracker(300)
         t.update(sample(), 1)
