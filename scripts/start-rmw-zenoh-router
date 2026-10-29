@@ -15,6 +15,11 @@ else
   listener='tcp/127.0.0.1:7447'
 fi
 export ZENOH_CONFIG_OVERRIDE="mode=\"router\";listen/endpoints=[\"${listener}\"];connect/endpoints=${endpoints};scouting/multicast/enabled=false;scouting/gossip/enabled=true;scouting/gossip/multihop=false"
+# Allow short wireless stalls before closing a central router's outgoing transport.
+# Microseconds; applies only to central -> peer traffic.
+if [[ "$ROLE" == central ]]; then
+  export ZENOH_CONFIG_OVERRIDE="${ZENOH_CONFIG_OVERRIDE};transport/link/tx/queue/congestion_control/block/wait_before_close=15000000"
+fi
 if [[ "$ROLE" != central && -f /etc/zenoh/rmw_zenoh_config/deny-profile.json ]]; then
   acl_override=$(python3 /usr/local/lib/rmw_zenoh_config/generate-acl.py \
     --profile /etc/zenoh/rmw_zenoh_config/deny-profile.json \

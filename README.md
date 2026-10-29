@@ -456,3 +456,13 @@ make install ROLE=vehicle DEVICE="<対象機械>" RUN_USER=operator
 
 RUN_USERはrouterサービス用。ROSノードを同じユーザーで動かす必要はないが、各ノードでRMW・Domain ID・接続設定をそろえる。
 systemdはユーザーの.bashrcを読み込まないため、ROSノード用サービスではros-env.shを明示的に読み込む。
+
+### 中央ルータの送信待ち時間
+
+`ROLE=central` は起動スクリプトの `ZENOH_CONFIG_OVERRIDE` で
+`transport/link/tx/queue/congestion_control/block/wait_before_close=15000000`
+（15秒）を適用する。無線区間の一時的な送信停滞を待つための設定で、
+中央から相手への送信にのみ適用する。車体・制御PCの値は変更しない。
+`make install` / `make update` で起動スクリプトが配置され、再起動時に適用される。
+`make update` は配置済み `router.json5` を保持するが、この項目は起動時の上書きを優先する。
+変更する場合は `scripts/start-rmw-zenoh-router` の値を編集する。
